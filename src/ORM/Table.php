@@ -15,8 +15,9 @@ class Table extends CakeTable
     protected $_db;
 
     private $_collection;
-
     private $_document;
+    private $_query;
+    private $_path = '';
 
     /**
      * Are we connected to the DataSource?
@@ -85,6 +86,10 @@ class Table extends CakeTable
     public function disconnect()
     {
         $this->_driver->disconnect();
+
+        unset($this->_query);
+        $this->_path = '';
+        $this->connected = false;
     }
 
     /**
@@ -97,61 +102,73 @@ class Table extends CakeTable
     {
         $connection = $this->_getConnection();
 
-        return $this->_db;
+        return $connection;
+    }
+
+    /**
+     * getPath
+     *
+     * @param string $path Path
+     * @access private
+     * @return string
+     */
+    private function getPath(string $path)
+    {
+        // not first /
+        if (!preg_match("/^\//", $path)) {
+            $path = "/{$path}";
+        }
+
+        // end / trim
+        if (preg_match("/\/$/", $path)) {
+            $path = preg_replace("/\/$/", '', $path);
+        }
+
+        // set path
+        $regex = "^[\/]{0,1}" . $this->getTable();
+        if (preg_match("/{$regex}/", $path)) {
+            $path = preg_replace("/{$regex}/", '', $path);
+        }
+
+        if (!$this->_path) {
+            $path = $this->getTable() . $path;
+        }
+
+        $this->_path .= $path;
+
+        return $path;
     }
 
     /**
      * getCollection
      *
+     * @param string $collection Collection
      * @access private
      * @return string
      */
-    private function getCollection()
+    private function getCollection(string $collection = '')
     {
-        $collection = $this->_collection;
-
         if (!$collection) {
-            return $this->getTable();
+            $collection = $this->getTable();
         }
 
-        // not first /
-        if (!preg_match("/^\//", $collection)) {
-            $collection = "/{$collection}";
-        }
-
-        // end / trim
-        if (preg_match("/\/$/", $collection)) {
-            $collection = preg_replace("/\/$/", '', $collection);
-        }
-
-        return $this->getTable() . $collection;
+        return $this->getPath($collection);
     }
 
     /**
      * getDocument
      *
+     * @param string $document Document
      * @access private
      * @return string
      */
-    private function getDocument()
+    private function getDocument(string $document = '')
     {
-        $document = $this->_document;
-
         if (!$document) {
             return $this->getTable();
         }
 
-        // not first /
-        if (!preg_match("/^\//", $document)) {
-            $document = "/{$document}";
-        }
-
-        // end / trim
-        if (preg_match("/\/$/", $document)) {
-            $document = preg_replace("/\/$/", '', $document);
-        }
-
-        return $this->getTable() . $document;
+        return $this->getPath($document);
     }
 
     /**
@@ -163,11 +180,22 @@ class Table extends CakeTable
      */
     private function getResponse($snapshot)
     {
+        $response = null;
         $entity = $this->getEntityClass();
 
-        $snapshot = new $entity($snapshot->data());
+        $class = get_class($snapshot);
+        if ($snapshot instanceof \Google\Cloud\Firestore\QuerySnapshot) {
+            $response = [];
+            foreach ($snapshot as $row) {
+                $response[] = new $entity($row->data());
+            }
+        } else {
+            if ($snapshot->exists()) {
+                $response = new $entity($snapshot->data());
+            }
+        }
 
-        return $snapshot;
+        return $response;
     }
 
     /**
@@ -203,9 +231,11 @@ class Table extends CakeTable
      * @access public
      * @return object
      */
-    public function collection(string $collection)
+    public function collection(string $collection = '')
     {
-        $this->_collection = $collection;
+        $collection = $this->getCollection($collection);
+        $this->_collection = $this->client()->collection($collection);
+        $this->_query = $this->_collection;
 
         return $this;
     }
@@ -217,26 +247,47 @@ class Table extends CakeTable
      * @access public
      * @return object
      */
-    public function document(string $document)
+    public function document(string $document = '')
     {
-        $this->_document = $document;
+        $document = $this->getDocument($document);
+        $this->_document = $this->client()->document($document);
+        $this->_query = $this->_document;
 
         return $this;
     }
 
     /**
-     * select
+     * first
      *
      * @access public
      * @return object
      */
-    public function select()
+    public function first()
     {
-        $connection = $this->_getConnection();
+        $snapshot = $this->_query->snapshot();
 
-        $document = $this->_db->document($this->getDocument());
+        $response = $this->getResponse($snapshot);
 
-        return $this->getResponse($document->snapshot());
+        $this->disconnect();
+
+        return $response;
+    }
+
+    /**
+     * all
+     *
+     * @access public
+     * @return object
+     */
+    public function all()
+    {
+        $snapshot = $this->_query->documents();
+
+        $response = $this->getResponse($snapshot);
+
+        $this->disconnect();
+
+        return $response;
     }
 
     /**
@@ -249,12 +300,10 @@ class Table extends CakeTable
      */
     public function insert(array $data = [])
     {
-        $connection = $this->_getConnection();
+        $document = $this->_query->newDocument();
+        $this->_query = $document->create($data);
 
-        $collection = $this->_db->collection($this->getCollection());
-        $document = $collection->newDocument();
-
-        return $document->create($data);
+        return $this;
     }
 
     /**
@@ -266,11 +315,9 @@ class Table extends CakeTable
      */
     public function set(array $data = [])
     {
-        $connection = $this->_getConnection();
+        $this->_query = $this->_query->set($data);
 
-        $document = $this->_db->document($this->getDocument());
-
-        return $document->set($data);
+        return $this;
     }
 
     /**
@@ -282,11 +329,9 @@ class Table extends CakeTable
      */
     public function update(array $data = [])
     {
-        $connection = $this->_getConnection();
+        $this->_query = $this->_query->update($data);
 
-        $document = $this->_db->document($this->getDocument());
-
-        return $document->update($data);
+        return $this;
     }
 
     /**
@@ -297,11 +342,9 @@ class Table extends CakeTable
      */
     public function remove()
     {
-        $connection = $this->_getConnection();
+        $this->_query = $this->_query->delete();
 
-        $document = $this->_db->document($this->getDocument());
-
-        return $document->delete();
+        return $this;
     }
 
     /**
@@ -312,11 +355,9 @@ class Table extends CakeTable
      */
     public function id()
     {
-        $connection = $this->_getConnection();
+        $this->_query = $this->_query->id();
 
-        $document = $this->_db->document($this->getDocument());
-
-        return $document->id();
+        return $this;
     }
 
     /**
@@ -327,11 +368,9 @@ class Table extends CakeTable
      */
     public function name()
     {
-        $connection = $this->_getConnection();
+        $this->_query = $this->_query->name();
 
-        $document = $this->_db->document($this->getDocument());
-
-        return $document->name();
+        return $this;
     }
 
     /**
@@ -342,11 +381,9 @@ class Table extends CakeTable
      */
     public function parent()
     {
-        $connection = $this->_getConnection();
+        $this->_query = $this->_query->parent();
 
-        $document = $this->_db->document($this->getDocument());
-
-        return $document->parent();
+        return $this;
     }
 
     /**
@@ -357,10 +394,23 @@ class Table extends CakeTable
      */
     public function path()
     {
-        $connection = $this->_getConnection();
+        $this->_query = $this->_query->path();
 
-        $document = $this->_db->document($this->getDocument());
+        return $this;
+    }
 
-        return $document->path();
+    /**
+     * order
+     *
+     * @param string $field Field
+     * @param string $direction Direction default:ASC
+     * @access public
+     * @return object
+     */
+    public function order(string $field, string $direction = 'ASC')
+    {
+        $this->_query = $this->_query->orderBy($field, $direction);
+
+        return $this;
     }
 }
