@@ -187,11 +187,13 @@ class Table extends CakeTable
         if ($snapshot instanceof \Google\Cloud\Firestore\QuerySnapshot) {
             $response = [];
             foreach ($snapshot as $row) {
-                $response[] = new $entity($row->data());
+                $properties = array_merge(['id' => $row->id()], $row->data());
+                $response[] = new $entity($properties);
             }
         } else {
             if ($snapshot->exists()) {
-                $response = new $entity($snapshot->data());
+                $properties = array_merge(['id' => $snapshot->id()], $snapshot->data());
+                $response = new $entity($properties);
             }
         }
 
