@@ -87,6 +87,8 @@ class Table extends CakeTable
     {
         $this->_driver->disconnect();
 
+        unset($this->_collection);
+        unset($this->_document);
         unset($this->_query);
         $this->_path = '';
         $this->connected = false;
@@ -181,6 +183,7 @@ class Table extends CakeTable
     private function getResponse($snapshot)
     {
         $response = null;
+
         $entity = $this->getEntityClass();
 
         $class = get_class($snapshot);
@@ -190,10 +193,17 @@ class Table extends CakeTable
                 $properties = array_merge(['id' => $row->id()], $row->data());
                 $response[] = new $entity($properties);
             }
-        } else {
+        } elseif ($snapshot instanceof \Google\Cloud\Firestore\DocumentSnapshot) {
             if ($snapshot->exists()) {
                 $properties = array_merge(['id' => $snapshot->id()], $snapshot->data());
                 $response = new $entity($properties);
+            }
+        } elseif ($snapshot instanceof \Google\Cloud\Firestore\CollectionReference) {
+            $documents = $snapshot->documents();
+            $response = $this->getResponse($documents);
+        } elseif ($snapshot instanceof \Google\Cloud\Core\Iterator\ItemIterator) {
+            foreach ($snapshot as $row) {
+                $response[$row->id()] = $this->getResponse($row);
             }
         }
 
@@ -225,6 +235,7 @@ class Table extends CakeTable
 
         return $this;
     }
+
 
     /**
      * collection
@@ -284,6 +295,23 @@ class Table extends CakeTable
     public function all()
     {
         $snapshot = $this->_query->documents();
+
+        $response = $this->getResponse($snapshot);
+
+        $this->disconnect();
+
+        return $response;
+    }
+
+    /**
+     * collections
+     *
+     * @access public
+     * @return object
+     */
+    public function collections()
+    {
+        $snapshot = $this->_query->collections();
 
         $response = $this->getResponse($snapshot);
 
@@ -412,6 +440,22 @@ class Table extends CakeTable
     public function order(string $field, string $direction = 'ASC')
     {
         $this->_query = $this->_query->orderBy($field, $direction);
+
+        return $this;
+    }
+
+    /**
+     * where
+     *
+     * @param string $field Google\Cloud\Firestore\FieldPath
+     * @param string|int $operator The operator to filter by.
+     * @param mixed $value The value to compare to.
+     * @access public
+     * @return void
+     */
+    public function where(string $field, $operator, $value)
+    {
+        $this->_query = $this->_query->where($field, $operator, $value);
 
         return $this;
     }
