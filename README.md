@@ -112,8 +112,9 @@ class PagesController extends AppController
         $this->loadModel('Products');
 
         // select
-        $data = $this->Products->document('1')
-            ->select();
+        $data = $this->Products->find()
+            ->document('1')
+            ->first();
 
         // insert
         $this->Products->document('1')

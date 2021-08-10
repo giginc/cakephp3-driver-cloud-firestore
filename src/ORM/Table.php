@@ -236,7 +236,6 @@ class Table extends CakeTable
         return $this;
     }
 
-
     /**
      * collection
      *
@@ -451,7 +450,7 @@ class Table extends CakeTable
      * @param string|int $operator The operator to filter by.
      * @param mixed $value The value to compare to.
      * @access public
-     * @return void
+     * @return object
      */
     public function where(string $field, $operator, $value)
     {

@@ -26,8 +26,13 @@
     ],
     "autoload": {
         "psr-4": {
-            "Giginc\\CloudFirestore\\": "src/",
-            "Giginc\\CloudFirestore\\Test\\": "tests/"
+            "Giginc\\CloudFirestore\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Giginc\\CloudFirestore\\Test\\": "tests/",
+            "Cake\\Test\\": "./vendor/cakephp/cakephp/tests"
         }
     },
     "scripts": {
